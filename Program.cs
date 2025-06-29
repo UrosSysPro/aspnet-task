@@ -24,22 +24,26 @@ app.MapGet("/image", TimeEntriesPieChart);
 async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
 {
     var code = "vO17RnE8vuzXzPJo5eaLLjXjmRW07law99QTD90zat9FfOQJKKUcgQ==";
-    var entries = await AzureWebsiteService.GetTimeEntries(httpClient, code);
-    var tbody = new StringBuilder();
-    tbody.AppendLine("<tbody>");
-    foreach (var entry in entries)
+    var response = await AzureWebsiteService.GetTimeEntries(httpClient, code);
+
+    static string PageSuccess(TimeEntry[] entries)
     {
-        var className = entry.TotalWorkingHours > 100 ? " class='selected'" : "";
-        tbody.AppendLine($@"
+        
+        var tbody = new StringBuilder();
+        tbody.AppendLine("<tbody>");
+        foreach (var entry in entries)
+        {
+            var className = entry.TotalWorkingHours < 100 ? " class='lowerThen'" : "";
+            tbody.AppendLine($@"
             <tr{className}>
                 <td class=""align-left p-1"">{entry.EmployeeName}</td>
                 <td class=""align-center p-1"">{entry.TotalWorkingHours} hrs</td>
-                <td class=""align-center p-1"">Edit</td>
+                <td class=""align-center p-1""><a href='#'>Edit</a></td>
             </tr>
         ");
-    }
-    tbody.AppendLine("</tbody>");
-    var html = $@"
+        }
+        tbody.AppendLine("</tbody>");
+        var html = $@"
         <!DOCTYPE html> 
         <html>
             <head>
@@ -114,7 +118,7 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
                       .bg-gray{{
                         background-color: #e5e5e5;
                       }}
-                      .selected td{{
+                      .lowerThen td{{
                         background-color: #f4ad9c;
                       }}
                 </style>
@@ -136,62 +140,104 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
             </body>
         </html>
     ";
-    return TypedResults.Content(html, "text/html");
+        return html;
+    }
+
+    static string PageFailure(string message)
+    {
+        return message;
+    }
+
+    if (response is TimeEntrySuccess)
+    {
+        var entries=((TimeEntrySuccess)response).entries;
+        return TypedResults.Content(PageSuccess(entries), "text/html");
+    }
+
+    if (response is TimeEntryFailure)
+    {
+        var message=((TimeEntryFailure)response).ErrorMessage;
+        return TypedResults.Content(PageFailure(message), "text/html");
+    }
+    return TypedResults.NotFound();
 }
 
 async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
 {
     var code = "vO17RnE8vuzXzPJo5eaLLjXjmRW07law99QTD90zat9FfOQJKKUcgQ==";
-    using var img = new Image<Rgba32>(600, 600);
-    var entries=await AzureWebsiteService.GetTimeEntries(httpClient,code);
-    // entries = entries.Take(20).ToArray();
-    img.Mutate(ctx =>
+    var response = await AzureWebsiteService.GetTimeEntries(httpClient, code);
+
+    static async Task<IResult> ImageSuccess(TimeEntry[] entries)
     {
-        ctx.Fill(Color.White);
-        int centerX = 300;
-        int centerY = 300;
-        int radius = 250;
-        var colors = new[]
-        {
-            Color.ParseHex("#36a2eb"),
-            Color.ParseHex("#ff6384"),
-            Color.ParseHex("#ff9f40"),
-            Color.ParseHex("#ffcd56"),
-            Color.ParseHex("#4bc0c0"),
-            Color.ParseHex("#9966ff"),
-            Color.ParseHex("#c9cbcf"),
-        };
         
-        var sum = 0;
-        foreach (var entry in entries)sum+=entry.TotalWorkingHours;
-        float angle = 0f;
-        for (int i=0;i<entries.Length;i++)
+        using var img = new Image<Rgba32>(600, 600);
+        img.Mutate(ctx =>
         {
-            var entry=entries[i];
-            var totalAngle=(float)entry.TotalWorkingHours/sum*(float)Math.PI*2;
-            var points = new PointF[20];
-            points[0]=new PointF(centerX,centerY);
-            for (int j = 1; j < points.Length; j++)
+            ctx.Fill(Color.White);
+            int centerX = 300;
+            int centerY = 300;
+            int radius = 250;
+            var colors = new[]
             {
-                var currentAngle = totalAngle / (points.Length - 2) * (j -1);
-                points[j]=new PointF(
-                    (float)(Math.Cos(angle+currentAngle-Math.PI/2)*radius+centerX),
-                    (float)(Math.Sin(angle+currentAngle-Math.PI/2)*radius+centerY)
+                Color.ParseHex("#36a2eb"),
+                Color.ParseHex("#ff6384"),
+                Color.ParseHex("#ff9f40"),
+                Color.ParseHex("#ffcd56"),
+                Color.ParseHex("#4bc0c0"),
+                Color.ParseHex("#9966ff"),
+                Color.ParseHex("#c9cbcf"),
+            };
+        
+            var sum = 0;
+            foreach (var entry in entries)sum+=entry.TotalWorkingHours;
+            float angle = 0f;
+            for (int i=0;i<entries.Length;i++)
+            {
+                var entry=entries[i];
+                var totalAngle=(float)entry.TotalWorkingHours/sum*(float)Math.PI*2;
+                var points = new PointF[20];
+                points[0]=new PointF(centerX,centerY);
+                for (int j = 1; j < points.Length; j++)
+                {
+                    var currentAngle = totalAngle / (points.Length - 2) * (j -1);
+                    points[j]=new PointF(
+                        (float)(Math.Cos(angle+currentAngle-Math.PI/2)*radius+centerX),
+                        (float)(Math.Sin(angle+currentAngle-Math.PI/2)*radius+centerY)
                     );
+                }
+                ctx.FillPolygon(colors[i%colors.Length],points);
+                ctx.DrawPolygon(Color.White,2,points);
+                angle+=totalAngle;
             }
-            ctx.FillPolygon(colors[i%colors.Length],points);
-            angle+=totalAngle;
-        }
-    });
+        });
     
-    var memoryStream = new MemoryStream();
-    await img.SaveAsync(memoryStream, new PngEncoder());
-    memoryStream.Position = 0;
+        var memoryStream = new MemoryStream();
+        await img.SaveAsync(memoryStream, new PngEncoder());
+        memoryStream.Position = 0;
     
-    return TypedResults.File(
-       fileContents:memoryStream.ToArray(),
-       contentType:"image/png"
-       );
+        return TypedResults.File(
+            fileContents:memoryStream.ToArray(),
+            contentType:"image/png"
+        );
+    }
+
+    static async Task<IResult> ImageFailure(string message)
+    {
+        return TypedResults.NotFound(message);
+    }
+    
+    if (response is TimeEntrySuccess)
+    {
+        var entries=((TimeEntrySuccess)response).entries;
+        return await ImageSuccess(entries);
+    }
+
+    if (response is TimeEntryFailure)
+    {
+        var message=((TimeEntryFailure)response).ErrorMessage;
+        return await ImageFailure(message);
+    }
+    return TypedResults.NotFound();
 }
 
 static TimeEntry TimeEntryDtoToModel(TimeEntryDto dto)
@@ -208,7 +254,7 @@ static TimeEntry TimeEntryDtoToModel(TimeEntryDto dto)
 
 app.Run();
 
-class TimeEntryDto
+public class TimeEntryDto
 {
     public string Id { get; set; }    
     public string? EmployeeName { get; set; }
@@ -218,7 +264,7 @@ class TimeEntryDto
     public string? DeletedOn { get; set; }
 }
 
-class TimeEntry
+public class TimeEntry
 {
     public TimeEntry(
         string id,
@@ -227,15 +273,15 @@ class TimeEntry
         DateTime endTimeUtc,
         string entryNotes,
         DateTime? deletedOn
-        )
+    )
     {
-       Id = id;
-       EmployeeName = employeeName;
-       StarTimeUtc = starTimeUtc;
-       EndTimeUtc = endTimeUtc;
-       EntryNotes = entryNotes;
-       DeletedOn = deletedOn;
-       TotalWorkingHours = CalculateTotalWorkingHours();
+        Id = id;
+        EmployeeName = employeeName;
+        StarTimeUtc = starTimeUtc;
+        EndTimeUtc = endTimeUtc;
+        EntryNotes = entryNotes;
+        DeletedOn = deletedOn;
+        TotalWorkingHours = CalculateTotalWorkingHours();
     }
     public string Id { get; set; }
     public string EmployeeName { get; set; }
@@ -251,41 +297,72 @@ class TimeEntry
     }
 }
 
+public interface ITimeEntryResponse{}
+
+public class TimeEntrySuccess : ITimeEntryResponse
+{
+    public TimeEntrySuccess(TimeEntry[] entries){this.entries=entries;}
+    public TimeEntry[] entries { get; set; }
+}
+public class TimeEntryFailure : ITimeEntryResponse
+{
+    public TimeEntryFailure(string message){ErrorMessage=message;}
+    public string ErrorMessage { get; set; }
+}
 
 class AzureWebsiteService
 {
     private static string apiUrl = "https://rc-vault-fap-live-1.azurewebsites.net/api";
-    public static async Task<TimeEntry[]> GetTimeEntries(HttpClient http,string code)
+    public static async Task<ITimeEntryResponse> GetTimeEntries(HttpClient http,string code)
     {
-        var response = await http.GetAsync($"{apiUrl}/gettimeentries?code={code}");
-        if (response.StatusCode == System.Net.HttpStatusCode.OK)
+        static async Task<HttpResponseMessage> getResponse(HttpClient http, string code)
+        {
+            return await http.GetAsync($"{apiUrl}/gettimeentries?code={code}");
+        }
+
+        static async Task<TimeEntry[]> responseToTimeEntry(HttpResponseMessage response)
         {
             var json=await response.Content.ReadAsStringAsync();
-            var entryDtos = JsonConvert.DeserializeObject<TimeEntryDto[]>(json) ?? new TimeEntryDto[0];
-            var entries=new  TimeEntry[entryDtos.Length];
-            for (int i = 0; i < entryDtos.Length; i++) entries[i]=TimeEntryDtoToModel(entryDtos[i]);
+            var dtoEntries = JsonConvert.DeserializeObject<TimeEntryDto[]>(json) ?? new TimeEntryDto[0];
+            var entries=new  TimeEntry[dtoEntries.Length];
+            for (int i = 0; i < dtoEntries.Length; i++) entries[i]=TimeEntryDtoToModel(dtoEntries[i]);
+            return entries;
+        }
+
+        static TimeEntry[] compactTimeEntries(TimeEntry[] entries)
+        {
             var dict=new Dictionary<string,TimeEntry>();
             foreach (var entry in entries)
             {
                 if(entry.EmployeeName==null)continue;
                 if (dict.ContainsKey(entry.EmployeeName))
                 {
-                   var previousEntry=dict[entry.EmployeeName];
-                   previousEntry.TotalWorkingHours+=entry.TotalWorkingHours;
-                   dict[entry.EmployeeName] = previousEntry;
+                    var previousEntry=dict[entry.EmployeeName];
+                    previousEntry.TotalWorkingHours+=entry.TotalWorkingHours;
+                    dict[entry.EmployeeName] = previousEntry;
                 }
                 else
                 {
-                   dict[entry.EmployeeName] = entry; 
+                    dict[entry.EmployeeName] = entry; 
                 }
             }
-            return dict.Values.ToArray();
+
+            var compactedEntries = dict.Values.ToArray();
+            var sortedEntries = compactedEntries.OrderByDescending(x=>x.TotalWorkingHours).ToArray();
+            return sortedEntries;
         }
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        
+        try
         {
-            Console.WriteLine("No time entries found");
+            var response=await getResponse(http,code);
+            var entries=await responseToTimeEntry(response);
+            var compactedEntries=compactTimeEntries(entries);
+            return new TimeEntrySuccess(compactedEntries);
         }
-        return new TimeEntry[0];
+        catch (Exception e)
+        {
+            return new TimeEntryFailure(e.Message);
+        }
     }
     
     private static TimeEntry TimeEntryDtoToModel(TimeEntryDto dto)
