@@ -144,7 +144,7 @@ async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
     var code = "vO17RnE8vuzXzPJo5eaLLjXjmRW07law99QTD90zat9FfOQJKKUcgQ==";
     using var img = new Image<Rgba32>(600, 600);
     var entries=await AzureWebsiteService.GetTimeEntries(httpClient,code);
-    entries = entries.Take(20).ToArray();
+    // entries = entries.Take(20).ToArray();
     img.Mutate(ctx =>
     {
         ctx.Fill(Color.White);
