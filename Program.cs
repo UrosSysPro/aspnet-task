@@ -153,16 +153,13 @@ async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
         int radius = 250;
         var colors = new[]
         {
-            Color.Red,
-            Color.Green,
-            Color.Blue,
-            Color.Cyan,
-            Color.Orange,
-            Color.Purple,
-            Color.Violet,
-            Color.Tomato,
-            Color.Crimson,
-            Color.OrangeRed,
+            Color.ParseHex("#36a2eb"),
+            Color.ParseHex("#ff6384"),
+            Color.ParseHex("#ff9f40"),
+            Color.ParseHex("#ffcd56"),
+            Color.ParseHex("#4bc0c0"),
+            Color.ParseHex("#9966ff"),
+            Color.ParseHex("#c9cbcf"),
         };
         
         var sum = 0;
