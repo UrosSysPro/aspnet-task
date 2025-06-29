@@ -26,17 +26,19 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
     var code = "vO17RnE8vuzXzPJo5eaLLjXjmRW07law99QTD90zat9FfOQJKKUcgQ==";
     var response = await AzureWebsiteService.GetTimeEntries(httpClient, code);
 
-    static string PageSuccess(TimeEntry[] entries)
+    static string PageSuccess(TimeEntryPerUser[] entries)
     {
         var tbody = new StringBuilder();
         tbody.AppendLine("<tbody>");
         foreach (var entry in entries)
         {
             var className = entry.TotalWorkingHours < 100 ? " class='lowerThen'" : "";
+            var name = entry.EmployeeName;
+            var workingHours = (int)Math.Round(entry.TotalWorkingHours);
             tbody.AppendLine($@"
             <tr{className}>
-                <td class=""align-left p-1"">{entry.EmployeeName}</td>
-                <td class=""align-center p-1"">{entry.TotalWorkingHours} hrs</td>
+                <td class=""align-left p-1"">{name}</td>
+                <td class=""align-center p-1"">{workingHours} hrs</td>
                 <td class=""align-center p-1""><a href='#'>Edit</a></td>
             </tr>
         ");
@@ -187,7 +189,7 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
     if (response is TimeEntrySuccess)
     {
         var entries=((TimeEntrySuccess)response).entries;
-        return TypedResults.Content(PageSuccess(entries), "text/html");
+        return TypedResults.Content(PageSuccess(TimeEntryUtils.CompactTimeEntries(entries)), "text/html");
     }
 
     if (response is TimeEntryFailure)
@@ -204,7 +206,7 @@ async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
     var code = "vO17RnE8vuzXzPJo5eaLLjXjmRW07law99QTD90zat9FfOQJKKUcgQ==";
     var response = await AzureWebsiteService.GetTimeEntries(httpClient, code);
 
-    static async Task<IResult> ImageSuccess(TimeEntry[] entries)
+    static async Task<IResult> ImageSuccess(TimeEntryPerUser[] entries)
     {
         
         using var img = new Image<Rgba32>(600, 600);
@@ -225,7 +227,7 @@ async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
                 Color.ParseHex("#c9cbcf"),
             };
         
-            var sum = 0;
+            var sum = 0f;
             foreach (var entry in entries)sum+=entry.TotalWorkingHours;
             float angle = 0f;
             for (int i=0;i<entries.Length;i++)
@@ -266,7 +268,7 @@ async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
     if (response is TimeEntrySuccess)
     {
         var entries=((TimeEntrySuccess)response).entries;
-        return await ImageSuccess(entries);
+        return await ImageSuccess(TimeEntryUtils.CompactTimeEntries(entries));
     }
 
     if (response is TimeEntryFailure)
@@ -314,12 +316,23 @@ public class TimeEntry
     public DateTime EndTimeUtc { get; set; }
     public string EntryNotes { get; set; }
     public DateTime? DeletedOn { get; set; }
-    public int TotalWorkingHours { get; set; }
+    public float TotalWorkingHours { get; set; }
 
-    private int CalculateTotalWorkingHours()
+    private float CalculateTotalWorkingHours()
     {
-        return Convert.ToInt32(EndTimeUtc.Subtract(StarTimeUtc).TotalHours);
+        return (float)EndTimeUtc.Subtract(StarTimeUtc).TotalHours;
     }
+}
+
+public class TimeEntryPerUser
+{
+    public TimeEntryPerUser(string EmployeeName, float TotalWorkingHours)
+    {
+        this.EmployeeName=EmployeeName;
+        this.TotalWorkingHours=TotalWorkingHours;
+    }
+    public string EmployeeName { get; set; }
+    public float TotalWorkingHours { get; set; }
 }
 
 public interface ITimeEntryResponse{}
@@ -334,7 +347,7 @@ public class TimeEntryFailure : ITimeEntryResponse
     public string ErrorMessage { get; set; }
 }
 
-class AzureWebsiteService
+public class AzureWebsiteService
 {
     private static string apiUrl = "https://rc-vault-fap-live-1.azurewebsites.net/api";
     
@@ -350,7 +363,7 @@ class AzureWebsiteService
             var json=await response.Content.ReadAsStringAsync();
             var dtoEntries = JsonConvert.DeserializeObject<TimeEntryDto[]>(json) ?? new TimeEntryDto[0];
             var entries=new  TimeEntry[dtoEntries.Length];
-            for (int i = 0; i < dtoEntries.Length; i++) entries[i]=TimeEntryDtoToModel(dtoEntries[i]);
+            for (int i = 0; i < dtoEntries.Length; i++) entries[i]=TimeEntryUtils.TimeEntryDtoToModel(dtoEntries[i]);
             return entries;
         }
 
@@ -381,16 +394,19 @@ class AzureWebsiteService
         {
             var response=await getResponse(http,code);
             var entries=await responseToTimeEntry(response);
-            var compactedEntries=compactTimeEntries(entries);
-            return new TimeEntrySuccess(compactedEntries);
+            // entries =compactTimeEntries(entries);
+            return new TimeEntrySuccess(entries);
         }
         catch (Exception e)
         {
             return new TimeEntryFailure(e.Message);
         }
     }
-    
-    private static TimeEntry TimeEntryDtoToModel(TimeEntryDto dto)
+}
+
+public class TimeEntryUtils
+{
+    public static TimeEntry TimeEntryDtoToModel(TimeEntryDto dto)
     {
         return new TimeEntry(
             dto.Id,
@@ -400,5 +416,33 @@ class AzureWebsiteService
             dto.EntryNotes,
             dto.DeletedOn == null ? null : DateTime.Parse(dto.DeletedOn)
         );
+    }
+
+    public static TimeEntryPerUser[] CompactTimeEntries(TimeEntry[] entries)
+    {
+        var dict=new Dictionary<string,TimeEntryPerUser>();
+        foreach (var entry in entries)
+        {
+            if(entry.EmployeeName==null)continue;
+            if (dict.ContainsKey(entry.EmployeeName))
+            {
+                var userEntry=dict[entry.EmployeeName];
+                userEntry.TotalWorkingHours+=entry.TotalWorkingHours;
+                dict[entry.EmployeeName] = userEntry;
+            }
+            else
+            {
+                dict[entry.EmployeeName] = TimeEntryToTimeEntryPerUser(entry);
+            }
+        }
+        return dict.Values.ToArray().OrderByDescending(entry=>entry.TotalWorkingHours).ToArray();
+    }
+    
+    public static TimeEntryPerUser TimeEntryToTimeEntryPerUser(TimeEntry dto)
+    {
+        return new TimeEntryPerUser(
+            dto.EmployeeName,
+            (float)dto.EndTimeUtc.Subtract(dto.StarTimeUtc).TotalHours
+            );
     }
 }
