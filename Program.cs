@@ -28,7 +28,6 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
 
     static string PageSuccess(TimeEntry[] entries)
     {
-        
         var tbody = new StringBuilder();
         tbody.AppendLine("<tbody>");
         foreach (var entry in entries)
@@ -44,9 +43,9 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
         }
         tbody.AppendLine("</tbody>");
         var html = $@"
-        <!DOCTYPE html> 
-        <html>
-            <head>
+            <!DOCTYPE html> 
+            <html>
+             <head>
                 <style>
                     *{{
                         padding: 0px;
@@ -56,6 +55,14 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
                     }}
                     html{{
                         height: 100vh;
+                    }}
+                    #content{{
+                        display:flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        overflow-x: hidden;
+                        overflow-y: auto;
                     }}
                     body{{
                         height: 100%;
@@ -124,6 +131,7 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
                 </style>
             </head>
             <body>
+                <!--<div id='content'>-->
                 <div id='scrollable'>
                     <table id=""table-gray-border-collapse"" class=""w-full"">
                         <thead>
@@ -136,16 +144,44 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
                 </div>
                 <div style=""height:50px""></div>
                 <img src='/image' alt='pie chart image'/>
-
+                <!--</div>-->
             </body>
         </html>
-    ";
+        ";
         return html;
     }
 
     static string PageFailure(string message)
     {
-        return message;
+        var html=$@"
+            <!DOCTYPE html>
+            <html>
+                <head>
+                    <style>
+                        *{{
+                            padding: 0px;
+                            margin: 0px;
+                            box-sizing: border-box;
+                        }}
+                        html{{
+                            height: 100vh;
+                        }}
+                        body{{
+                            height: 100%;
+                            display:flex;
+                            flex-direction: column;
+                            align-items: center;
+                            justify-content: center;
+                        }}
+                    </style>
+                </head>
+                <body>
+                    <span>Error occurred, try again later</span>  
+                    <span>{message}</span>
+                </body>
+            </html>
+        ";
+        return html;
     }
 
     if (response is TimeEntrySuccess)
@@ -159,6 +195,7 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
         var message=((TimeEntryFailure)response).ErrorMessage;
         return TypedResults.Content(PageFailure(message), "text/html");
     }
+    
     return TypedResults.NotFound();
 }
 
@@ -240,18 +277,6 @@ async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
     return TypedResults.NotFound();
 }
 
-static TimeEntry TimeEntryDtoToModel(TimeEntryDto dto)
-{
-    return new TimeEntry(
-        dto.Id,
-        dto.EmployeeName,
-        DateTime.Parse(dto.StarTimeUtc),
-        DateTime.Parse(dto.EndTimeUtc),
-        dto.EntryNotes,
-        dto.DeletedOn == null ? null : DateTime.Parse(dto.DeletedOn)
-    );
-}
-
 app.Run();
 
 public class TimeEntryDto
@@ -298,7 +323,6 @@ public class TimeEntry
 }
 
 public interface ITimeEntryResponse{}
-
 public class TimeEntrySuccess : ITimeEntryResponse
 {
     public TimeEntrySuccess(TimeEntry[] entries){this.entries=entries;}
@@ -313,6 +337,7 @@ public class TimeEntryFailure : ITimeEntryResponse
 class AzureWebsiteService
 {
     private static string apiUrl = "https://rc-vault-fap-live-1.azurewebsites.net/api";
+    
     public static async Task<ITimeEntryResponse> GetTimeEntries(HttpClient http,string code)
     {
         static async Task<HttpResponseMessage> getResponse(HttpClient http, string code)
