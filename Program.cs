@@ -29,11 +29,12 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
     tbody.AppendLine("<tbody>");
     foreach (var entry in entries)
     {
+        var className = entry.TotalWorkingHours > 100 ? " class='selected'" : "";
         tbody.AppendLine($@"
-            <tr>
-                <td>{entry.EmployeeName}</td>
-                <td>{entry.TotalWorkingHours()} hrs</td>
-                <td>Edit</td>
+            <tr{className}>
+                <td class=""align-left p-1"">{entry.EmployeeName}</td>
+                <td class=""align-center p-1"">{entry.TotalWorkingHours} hrs</td>
+                <td class=""align-center p-1"">Edit</td>
             </tr>
         ");
     }
@@ -42,17 +43,96 @@ async static Task<IResult> TimeEntriesPage(HttpClient httpClient)
         <!DOCTYPE html> 
         <html>
             <head>
+                <style>
+                    *{{
+                        padding: 0px;
+                        margin: 0px;
+                        box-sizing: border-box;
+                        font-family: sans-serif;
+                    }}
+                    html{{
+                        height: 100vh;
+                    }}
+                    body{{
+                        height: 100%;
+                        display:flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                    }}
+                    #scrollable{{
+                        display: block;
+                        width: 40rem;
+                        height: 20rem;
+                        overflow-x: hidden;
+                        overflow-y: auto;
+                      }}
+                      
+                      #table-gray-border-collapse th,td{{
+                        border:2px gray solid;
+                      }}
+                      #table-gray-border-collapse {{
+                        /*border:2px gray solid;*/
+                        border-collapse: collapse;
+                      }}
+                      
+                      .align-left{{
+                        text-align: start;
+                      }}
+                      .align-center{{
+                        text-align: center;
+                      }}
+                      .w-full{{
+                        width: 100%;
+                      }}
+                      .px-1{{
+                        padding-left: 1rem;
+                        padding-right: 1rem;
+                      }}
+                      .px-2{{
+                        padding-left: 2rem;
+                        padding-right: 2rem;
+                      }}
+                      .py-1{{
+                        padding-top: 1rem;
+                        padding-bottom: 1rem;
+                      }}
+                      .py-2{{
+                        padding-top: 2rem;
+                        padding-bottom: 2rem;
+                      }}
+                      .p-1{{
+                        padding: 1rem;
+                      }}
+                      .p-2{{
+                        padding: 2rem;
+                      }}
+                      .pb-4{{
+                        padding-bottom: 4rem;
+                      }}
+                      
+                      .bg-gray{{
+                        background-color: #e5e5e5;
+                      }}
+                      .selected td{{
+                        background-color: #f4ad9c;
+                      }}
+                </style>
             </head>
             <body>
-                <table>
-                    <thead>
-                        <th>Name</th>
-                        <th>Total time in month</th>
-                        <th>Edit</th>
-                    </thead>
-                    {tbody}
-                </table>
+                <div id='scrollable'>
+                    <table id=""table-gray-border-collapse"" class=""w-full"">
+                        <thead>
+                            <th class=""align-left p-1 bg-gray"">Name</th>
+                            <th class=""align-center p-1 bg-gray"">Total Time in Month</th>
+                            <th class=""align-center p-1 bg-gray"">Actions</th>
+                        </thead>
+                        {tbody}
+                    </table>
+                </div>
+                <div style=""height:50px""></div>
                 <img src='/image' alt='pie chart image'/>
+
             </body>
         </html>
     ";
@@ -86,12 +166,12 @@ async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
         };
         
         var sum = 0;
-        foreach (var entry in entries)sum+=entry.TotalWorkingHours();
+        foreach (var entry in entries)sum+=entry.TotalWorkingHours;
         float angle = 0f;
         for (int i=0;i<entries.Length;i++)
         {
             var entry=entries[i];
-            var totalAngle=(float)entry.TotalWorkingHours()/sum*(float)Math.PI*2;
+            var totalAngle=(float)entry.TotalWorkingHours/sum*(float)Math.PI*2;
             var points = new PointF[20];
             points[0]=new PointF(centerX,centerY);
             for (int j = 1; j < points.Length; j++)
@@ -134,7 +214,7 @@ app.Run();
 class TimeEntryDto
 {
     public string Id { get; set; }    
-    public string EmployeeName { get; set; }
+    public string? EmployeeName { get; set; }
     public string StarTimeUtc { get; set; }
     public string EndTimeUtc { get; set; }
     public string EntryNotes { get; set; }
@@ -158,6 +238,7 @@ class TimeEntry
        EndTimeUtc = endTimeUtc;
        EntryNotes = entryNotes;
        DeletedOn = deletedOn;
+       TotalWorkingHours = CalculateTotalWorkingHours();
     }
     public string Id { get; set; }
     public string EmployeeName { get; set; }
@@ -165,8 +246,9 @@ class TimeEntry
     public DateTime EndTimeUtc { get; set; }
     public string EntryNotes { get; set; }
     public DateTime? DeletedOn { get; set; }
+    public int TotalWorkingHours { get; set; }
 
-    public int TotalWorkingHours()
+    private int CalculateTotalWorkingHours()
     {
         return Convert.ToInt32(EndTimeUtc.Subtract(StarTimeUtc).TotalHours);
     }
@@ -185,7 +267,22 @@ class AzureWebsiteService
             var entryDtos = JsonConvert.DeserializeObject<TimeEntryDto[]>(json) ?? new TimeEntryDto[0];
             var entries=new  TimeEntry[entryDtos.Length];
             for (int i = 0; i < entryDtos.Length; i++) entries[i]=TimeEntryDtoToModel(entryDtos[i]);
-            return entries;
+            var dict=new Dictionary<string,TimeEntry>();
+            foreach (var entry in entries)
+            {
+                if(entry.EmployeeName==null)continue;
+                if (dict.ContainsKey(entry.EmployeeName))
+                {
+                   var previousEntry=dict[entry.EmployeeName];
+                   previousEntry.TotalWorkingHours+=entry.TotalWorkingHours;
+                   dict[entry.EmployeeName] = previousEntry;
+                }
+                else
+                {
+                   dict[entry.EmployeeName] = entry; 
+                }
+            }
+            return dict.Values.ToArray();
         }
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
         {
