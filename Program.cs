@@ -214,7 +214,7 @@ async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
         {
             ctx.Fill(Color.White);
             int centerX = 300;
-            int centerY = 300;
+            int centerY = 350;
             int radius = 250;
             var colors = new[]
             {
@@ -248,6 +248,11 @@ async static Task<IResult> TimeEntriesPieChart(HttpClient httpClient)
                 ctx.DrawPolygon(Color.White,2,points);
                 angle+=totalAngle;
             }
+
+            // for (int i = 0; i < entries.Length; i++)
+            // {
+                // ctx.DrawText()
+            // }
         });
     
         var memoryStream = new MemoryStream();
