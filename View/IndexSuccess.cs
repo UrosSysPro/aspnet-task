@@ -39,19 +39,15 @@ public class IndexSuccess
                         height: 100vh;
                     }}
                     #content{{
+                        padding-top:10rem;
+                        padding-bottom:10rem;
                         display:flex;
                         flex-direction: column;
                         align-items: center;
                         justify-content: center;
-                        overflow-x: hidden;
-                        overflow-y: auto;
                     }}
                     body{{
-                        height: 100%;
-                        display:flex;
-                        flex-direction: column;
-                        align-items: center;
-                        justify-content: center;
+                        overflow-y:auto;
                     }}
                     #scrollable{{
                         display: block;
@@ -113,7 +109,7 @@ public class IndexSuccess
                 </style>
             </head>
             <body>
-                <!--<div id='content'>-->
+                <div id='content'>
                 <div id='scrollable'>
                     <table id=""table-gray-border-collapse"" class=""w-full"">
                         <thead>
@@ -126,7 +122,7 @@ public class IndexSuccess
                 </div>
                 <div style=""height:50px""></div>
                 <img src='/image' alt='pie chart image'/>
-                <!--</div>-->
+                </div>
             </body>
         </html>
         ";
